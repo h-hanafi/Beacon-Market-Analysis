@@ -1,0 +1,142 @@
+---
+title: "Beacon Market Analysis 2019Q4"
+author: "Hussam Hanafi"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+# Setup
+if(!require(tidyverse)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
+if(!require(readxl)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
+if(!require(RColorBrewer)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
+if(!require(knitr)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
+
+options(digits = 0, scipen = 999)
+options(knitr.table.format = 'markdown')
+
+courses <- read_xlsx("C:\\Users\\USER\\Documents\\R\\Projects\\Beacon-Market-Analysis\\Raw_Data\\Market Research.xlsx",col_names = TRUE, sheet = "Competitor Courses") %>% filter(!is.na(Centre))
+```
+
+# 2019Q4 Market Analysis
+
+## Introduction
+
+The following report is a snapshot of the market conditions during the last quarter of 2019. It focuses on the quantity, categories and market prices of courses available during this period.
+
+It's Important however to note the limitations of the report before we dive in:
+
+* It is impossible to see market trends without additional time series data; any discussion of trends throughout the report are based on larger trends within and without the country.
+* While it was easy to find the number of courses each centre this is not a reflection of either the quality of the courses or the number of trainees signing up for each course.
+* There is a significant chunk of missing data when it comes to market prices and we should be wary of making generalisations in certain categories as can be seen below:
+
+```{r percent missing certifcation, echo=FALSE, message=FALSE, warning=FALSE}
+courses %>% group_by(`Exam Certified`) %>% 
+  summarise(Percentage_NA = mean(is.na(Cost)) * 100) %>% 
+  kable(col.names = c("Certification","% of missing Data"))
+```
+
+```{r percent missing category, echo=FALSE, message=FALSE, warning=FALSE}
+courses %>% group_by(`Industry/Skill`) %>% 
+  summarise(Percent_NA = mean(is.na(Cost))*100) %>% 
+  filter(Percent_NA != 100) %>%
+  arrange(desc(Percent_NA)) %>% top_n(10) %>%
+  knitr::kable(col.names = c("Categories","% of missing Data"))
+```
+
+## Analysis
+
+### By Categories
+
+First we start by looking at the Categories of Courses divided by the Centres:
+
+```{r skill/centre barplot, echo=FALSE, fig.height=14, fig.width=14}
+courses %>% group_by(`Industry/Skill`) %>% mutate(count = n()) %>% 
+  group_by(Centre,`Industry/Skill`) %>% summarise(compound_count = n(), count = min(count)) %>%  ungroup() %>%
+  mutate(`Industry/Skill` = reorder(`Industry/Skill`,desc(count))) %>%
+  ggplot(aes(`Industry/Skill`,compound_count,fill = Centre)) + geom_bar(stat = "identity",color = "black") + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)) + 
+  scale_fill_manual(values = c(brewer.pal(12,"Set3"),brewer.pal(9,"Set1"),brewer.pal(8,"Accent"),brewer.pal(8,"Set2"))) + 
+  scale_y_continuous(breaks = 0:40, expand = c(0,0)) + 
+  theme_light() + theme(panel.grid = element_blank(), axis.title = element_text(size = 14), axis.text.x = element_text(size = 14, angle = 90, hjust = 1, vjust = 0.5)) + 
+  labs(y = "Count", x = "Categories")
+```
+
+At the High end of the Count, we see a lot of technical Categories with crowded competition. Soft Skills and Project managment also show crowded competition spaces despite being middle of the pack, indicating we might need to put more effort to capture a piece of those markets.
+
+The lower end of the count shows some suprising information. While it is expected that highly specialised spaces such as Geology or Economics would have fewer courses we see a lack of courses specialising in the below categories:
+
+* Entrepreneurship
+* Customer Service
+* Advertising/Social Media; this is in spite of a sizeable number of Sales/Marketing Courses
+* Risk Management
+
+And to a lesser extent:
+
+* HR
+* Programming
+* Management
+
+Implying that the above are ripe for a strong push in 2020
+
+Of relevance to us is that there is only one Centre present in the Logistics/Supply Chain sector where we have an opportunity to leverage our history to both take a piece of the existing market as well grow it.
+
+Finally I want to bring attention to Health and Safety, there are only 4 players in the field with only half of the courses OSHA or NEBOSH Certified:
+
+```{r health and safety by centre, echo=FALSE}
+courses %>% filter(`Industry/Skill` == "Health and Safety") %>% 
+  group_by(Centre) %>% summarise(count = n()) %>% arrange(desc(count)) %>%
+  kable(col.names = c("Centre", "# of Health and Safety Courses"))
+```
+
+```{r health and safety by certification, echo=FALSE}
+courses %>% filter(`Industry/Skill` == "Health and Safety") %>% 
+  group_by(`Exam Certified`) %>% summarise(count = n()) %>% arrange(desc(count)) %>%
+  kable(col.names = c("Certified","# of Health and Safety Courses"))
+```
+
+Considering recent events it's safe to assume that companies will be putting a bigger focus on health and safety and thus we can take advantage of the market expansion that will accompany that renewed focus. 
+
+On a related note Medical Courses tend to be geared towards Med students and Residents, a Keyword search only one first aid course creating a possible opportunity to package such courses with Health and Safety.
+
+### Competition Pricing
+
+First We look at the Market averages before diving inot breakdowns so we ca have a baseline:
+
+```{r pricing market wide, echo=FALSE}
+courses %>% summarize(average = mean(Cost,na.rm = TRUE), median = median(Cost,na.rm = TRUE)) %>% 
+  kable(col.names = c("Market Average","Market Median"))
+```
+
+The Market Average skews higher than the Median, indicating a gap between more expensive courses and the 'average' course. We will break this down further later in the report but this does imply the opportunity to undercut competitor prices in the higher end of the pricing spectrum while maintaining lower cost courses at market average.
+
+Breaking this down by Categories
+
+```{r pricing by skill, echo=FALSE}
+courses %>% group_by(`Industry/Skill`) %>% 
+  summarize(average = mean(Cost,na.rm = TRUE), median = median(Cost,na.rm = TRUE)) %>%
+  filter(!is.na(average)) %>%
+  arrange(desc(median)) %>% kable(col.names = c("Category","Market Average","Market Median"))
+```
+
+And Then by Certification Status
+
+```{r pricing certification, echo=FALSE}
+courses %>% group_by(`Exam Certified`) %>% 
+  summarize(average = mean(Cost,na.rm = TRUE), median = median(Cost,na.rm = TRUE)) %>%
+  filter(!is.na(average)) %>%
+  arrange(desc(median)) %>% kable(col.names = c("Certification","Market Average","Market Median"))
+```
+
+And finally by Centre
+
+```{r pricing by Centre, echo=FALSE}
+courses %>% group_by(Centre) %>% 
+  summarize(average = mean(Cost,na.rm = TRUE), median = median(Cost,na.rm = TRUE)) %>%
+  filter(!is.na(average)) %>%
+  arrange(desc(median)) %>% kable(col.names = c("Centre","Centre Average","Centre Median"))
+```
+
+## Deep Dive
+
+This Section will include a deep dive into specific Categories.
