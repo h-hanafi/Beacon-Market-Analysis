@@ -11,6 +11,11 @@ if(!require(tidyverse)) install.packages("tidyverse", repos = "http://cran.us.r-
 if(!require(readxl)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
 if(!require(RColorBrewer)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
 if(!require(knitr)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
+if(!require(caret)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
+if(!require(rpart)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
+if(!require(rpart.plot)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
+
+
 
 options(digits = 0, scipen = 999)
 options(knitr.table.format = 'markdown')
@@ -18,9 +23,7 @@ options(knitr.table.format = 'markdown')
 courses <- read_xlsx("C:\\Users\\USER\\Documents\\R\\Projects\\Beacon-Market-Analysis\\Raw_Data\\Market Research.xlsx",col_names = TRUE, sheet = "Competitor Courses") %>% filter(!is.na(Centre))
 ```
 
-# 2019Q4 Market Analysis
-
-## Introduction
+# Introduction
 
 The following report is a snapshot of the market conditions during the last quarter of 2019. It focuses on the quantity, categories and market prices of courses available during this period.
 
@@ -44,9 +47,9 @@ courses %>% group_by(`Industry/Skill`) %>%
   knitr::kable(col.names = c("Categories","% of missing Data"))
 ```
 
-## Analysis
+# Analysis
 
-### By Categories
+## By Categories
 
 First we start by looking at the Categories of Courses divided by the Centres:
 
@@ -62,20 +65,21 @@ courses %>% group_by(`Industry/Skill`) %>% mutate(count = n()) %>%
   labs(y = "Count", x = "Categories")
 ```
 
-At the High end of the Count, we see a lot of technical Categories with crowded competition. Soft Skills and Project managment also show crowded competition spaces despite being middle of the pack, indicating we might need to put more effort to capture a piece of those markets.
+At the high end of the Count, we see a lot of technical Categories with crowded competition. Soft Skills and Project managment also show crowded competition spaces despite being middle of the pack, indicating we might need to put more effort to capture a piece of those markets.
 
 The lower end of the count shows some suprising information. While it is expected that highly specialised spaces such as Geology or Economics would have fewer courses we see a lack of courses specialising in the below categories:
 
 * Entrepreneurship
 * Customer Service
 * Advertising/Social Media; this is in spite of a sizeable number of Sales/Marketing Courses
-* Risk Management
+* Risk and Quality Management
 
 And to a lesser extent:
 
 * HR
 * Programming
 * Management
+* Sales/Marketing
 
 Implying that the above are ripe for a strong push in 2020
 
@@ -99,44 +103,147 @@ Considering recent events it's safe to assume that companies will be putting a b
 
 On a related note Medical Courses tend to be geared towards Med students and Residents, a Keyword search only one first aid course creating a possible opportunity to package such courses with Health and Safety.
 
-### Competition Pricing
 
-First We look at the Market averages before diving inot breakdowns so we ca have a baseline:
+
+## Competition Pricing
+
+First We look at the Market averages before diving into breakdowns so we can have a baseline:
 
 ```{r pricing market wide, echo=FALSE}
 courses %>% summarize(average = mean(Cost,na.rm = TRUE), median = median(Cost,na.rm = TRUE)) %>% 
   kable(col.names = c("Market Average","Market Median"))
 ```
 
-The Market Average skews higher than the Median, indicating a gap between more expensive courses and the 'average' course. We will break this down further later in the report but this does imply the opportunity to undercut competitor prices in the higher end of the pricing spectrum while maintaining lower cost courses at market average.
+The Market Average skews higher than the Median, indicating a gap between more expensive courses and the 'average' course. This is visible when we look at the distribution of course fees:
 
-Breaking this down by Categories
-
-```{r pricing by skill, echo=FALSE}
-courses %>% group_by(`Industry/Skill`) %>% 
-  summarize(average = mean(Cost,na.rm = TRUE), median = median(Cost,na.rm = TRUE)) %>%
-  filter(!is.na(average)) %>%
-  arrange(desc(median)) %>% kable(col.names = c("Category","Market Average","Market Median"))
+```{r pricing histogram market wide, echo=FALSE, fig.height=14, fig.width=14, warning=FALSE}
+courses %>% ggplot(aes(Cost)) + geom_histogram(color = "black", binwidth = 500) + 
+  scale_y_continuous(expand = c(0,0)) + scale_x_continuous(breaks = seq(0,50000,2000), expand = c(0,0)) + 
+  ggtitle("Distribution of Course Pricing across the market")
 ```
 
-And Then by Certification Status
+From here we see that while the majority of courses hover around 1,500 SDG per head we see the expected gap between price ranges hovering around the median and the higher end of the Spectrum.
 
-```{r pricing certification, echo=FALSE}
-courses %>% group_by(`Exam Certified`) %>% 
-  summarize(average = mean(Cost,na.rm = TRUE), median = median(Cost,na.rm = TRUE)) %>%
-  filter(!is.na(average)) %>%
-  arrange(desc(median)) %>% kable(col.names = c("Certification","Market Average","Market Median"))
+A quick overview of the distrubition across categories does little to explain this gap. Some of the individual categories such as the ICT skills, and Medicine showing similar distributions to the market wide plot, others do no have enough data to draw any conclusions:
+
+
+```{r pricing by skill, echo=FALSE, fig.height=14, fig.width=14, warning=FALSE}
+courses %>% filter(!is.na(Cost)) %>% ggplot(aes(Cost)) + geom_histogram(color = "black", binwidth = 500) + 
+  scale_x_continuous(breaks = seq(0,50000,1000), limits = c(0,NA), expand = c(0,0)) +
+  scale_y_continuous(breaks = 1:10) + 
+  facet_wrap(~`Industry/Skill`,scales = "free") + 
+  ggtitle("Distribution of Course Pricing across Categories")
 ```
 
-And finally by Centre
+Breaking it down by certification status gives us a more enlightening picture:
 
-```{r pricing by Centre, echo=FALSE}
-courses %>% group_by(Centre) %>% 
-  summarize(average = mean(Cost,na.rm = TRUE), median = median(Cost,na.rm = TRUE)) %>%
-  filter(!is.na(average)) %>%
-  arrange(desc(median)) %>% kable(col.names = c("Centre","Centre Average","Centre Median"))
+```{r pricing certification, echo=FALSE, fig.height=14, fig.width=14, warning=FALSE}
+courses %>% filter(!is.na(Cost)) %>% ggplot(aes(Cost)) + geom_histogram(color = "black", binwidth = 500) + 
+  scale_x_continuous(breaks = seq(0,50000,2000), limits = c(0,NA),expand = c(0,0)) +
+  scale_y_continuous(breaks = 1:30) + 
+  facet_wrap(~`Exam Certified`, ncol = 2, scales = "free") +
+  ggtitle("Distribution of Course Pricing By Certification Status")
 ```
 
-## Deep Dive
+Uncertified Courses are both numerous and display a distribution skewed towards lower cost as expected. Prep Courses for external exams tend to hover around 2,500 SDG; however, the source of our gap is Courses that include the certification process. Calls to Centre's regarding these programs confirm that the cost is inclusive of materials and the Exam Fees.
 
-This Section will include a deep dive into specific Categories.
+We can confirm our conclusions by running a simple algorithim that segments the data based on the variable that most affect the cost, then makes a prediction of the cost based on this. We won't go into technical details of the below plot but provide conclusions underneath.
+
+```{r rpart cost, echo=FALSE, warning=FALSE}
+colnames(courses) <- make.names(colnames(courses))
+
+fit_rpart <- courses %>% select(Centre,Industry.Skill,Location,Languages,Event.Type,Exam.Certified,Cost) %>% 
+  train(Cost ~. , method = "rpart", na.action = na.omit, data = .)
+
+rpart.plot(fit_rpart$finalModel)
+courses <- read_xlsx("C:\\Users\\USER\\Documents\\R\\Projects\\Beacon-Market-Analysis\\Raw_Data\\Market Research.xlsx",col_names = TRUE, sheet = "Competitor Courses") %>% filter(!is.na(Centre))
+```
+
+Our earlier assumptions regarding segmentation are confirmed here, looking at the 3 most important Variables and their importance as a percentage:
+
+```{r varimp table, echo=FALSE, message=FALSE, warning=FALSE}
+varImp(fit_rpart)$importance %>% as_tibble(rownames = "Variable") %>% arrange(desc(Overall)) %>% top_n(3) %>% 
+  mutate(Variable = c("Exam.Certified.Yes","Exam.Certified.no","Location")) %>% kable()
+```
+
+And the results are as follows:
+
+* Courses that include Certificates:
+  + 7% of the Courses
+  + Predicted to cost 21,000 SDG
+
+* Courses with External Exams
+  + 12% of the Courses
+  + Prediction to cost 2,700 SDG
+
+* Remainder of the courses
+  + 81% of the Courses
+  + Prediction to cost 1,400 SDG
+
+# Deep Dive
+
+It is clear then that the easiest way to segment the market is through Course Fees, which indirectly leads to a division based on whether or not a course is certified. Below we focus on the courses that either include certification or act as prepartory courses for certification.
+
+## Certified or External Examination Preparation Course
+
+```{r cert and prep hist, echo=FALSE, fig.height=14, fig.width=14}
+courses %>% filter(`Exam Certified` %in% c("Yes","External Exam")) %>% group_by(`Industry/Skill`) %>% mutate(count = n()) %>% 
+  group_by(Centre,`Industry/Skill`) %>% summarise(compound_count = n(), count = min(count)) %>%  ungroup() %>%
+  mutate(`Industry/Skill` = reorder(`Industry/Skill`,desc(count))) %>%
+  ggplot(aes(`Industry/Skill`,compound_count,fill = Centre)) + geom_bar(stat = "identity",color = "black") + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)) + 
+  scale_fill_manual(values = c(brewer.pal(12,"Set3"),brewer.pal(9,"Set1"),brewer.pal(8,"Accent"),brewer.pal(8,"Set2"))) + 
+  scale_y_continuous(breaks = 0:40, expand = c(0,0)) + 
+  theme_light() + theme(panel.grid = element_blank(), axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)) +
+  ylab("Count")
+```
+
+This Plot shows a different picture from our original histogram. Here we can see that while IT/Networking courses still show the highest count, other technical programs are not showing the same levels. While this may be a possible opportunity, We are of the opinion that there are probably good reasons for this discrepency and that this requires more research.
+
+Meanwhile; previously middle of the pack courses are now leading. Most prominently Health and Safety, Project Management, Sales/Marketing and Logistics. Of these Project Management presents a crowded field while the remainder remain opportune places to focus.
+
+A Keyword search of the Sales/Marketing Category shows us that the Certified Courses are in Marketing.
+
+The bottom end of the spectrum also presents certain opportunities, such as prep courses for CPA/CFA hopefuls, as well as in the fields of Quality and Risk Management. However, this report will not go into those fields as they are smaller areas even in the more comprehensive view of the market; choosing instead to leave it for the 2020Q1 Market Analysis Report.
+
+On a Final note, While Project Management does present a crowded field, a keyword search shows that all the courses are based on PMI® materials, with no presence from competing project management techniques such as AgilePM® and Six Sigma Lean® presenting another possible opportunity in the future.
+
+## Uncertified Courses
+
+Below We find the distribution of the remaining courses:
+
+```{r uncertified distribution, echo=FALSE, fig.height=14, fig.width=14}
+courses %>% filter(`Exam Certified` == "No") %>% group_by(`Industry/Skill`) %>% mutate(count = n()) %>% 
+  group_by(Centre,`Industry/Skill`) %>% summarise(compound_count = n(), count = min(count)) %>%  ungroup() %>%
+  mutate(`Industry/Skill` = reorder(`Industry/Skill`,desc(count))) %>%
+  ggplot(aes(`Industry/Skill`,compound_count,fill = Centre)) + geom_bar(stat = "identity",color = "black") + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)) + 
+  scale_fill_manual(values = c(brewer.pal(12,"Set3"),brewer.pal(9,"Set1"),brewer.pal(8,"Accent"),brewer.pal(8,"Set2"))) + 
+  scale_y_continuous(breaks = 0:40, expand = c(0,0)) + 
+  theme_light() + theme(panel.grid = element_blank(), axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)) +
+  ylab("Count")
+```
+
+The picture here does not change much from our initial market wide assesment and no new insights can be gained.
+
+# Conclusion
+
+It is the reccomendation of the report that 2020Q1 Training Plan be based on a Price based Market Segmentation with a focus on the below; in no particular order:
+
+* Entrepreneurship
+* Customer Service
+* Advertising/Social Media
+* HR
+* Management
+* Sales/Marketing
+* Logistics/Procurement/Supply Chain
+* Health and Safety
+
+With Particular focus on providing Certified courses in the below:
+
+* HR
+* Marketing
+* Logistics/Procurement/Supply Chain
+* Health and Safety
+
+As for the remainder courses should be prepared so that we are ready to respond to customer inquiries and requirements; meanwhile, pilot courses can be prepared and advertised to guage actual market interest and test appropriate price points.
